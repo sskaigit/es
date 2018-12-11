@@ -28,10 +28,10 @@ public class EsBulkProcessor {
     @Bean
     public BulkProcessor bulkProcessor() throws UnknownHostException {
 
-        Settings settings = Settings.builder().put("docker-cluster", "vL9ymUX").build();
+        Settings settings = Settings.builder().put("cluster.name", "docker-cluster").build();
 
         Client client = new PreBuiltTransportClient(settings)
-                .addTransportAddress(new TransportAddress(InetAddress.getByName("http://localhost"), Integer.parseInt("9200")));
+                .addTransportAddress(new TransportAddress(InetAddress.getByName("localhost"), Integer.parseInt("9300")));
 
         return BulkProcessor.builder(client, new BulkProcessor.Listener() {
             @Override
