@@ -6,8 +6,14 @@ import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsRequest;
 import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsResponse;
 import org.elasticsearch.action.admin.indices.mapping.put.PutMappingRequest;
+import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.client.Client;
 import org.elasticsearch.client.Requests;
 import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.index.query.BoolQueryBuilder;
+import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.search.SearchHit;
+import org.elasticsearch.search.SearchHits;
 import org.junit.Test;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +26,7 @@ public class EsTransport {
 
     /**
      * 建立mapping
+     *
      * @return
      */
     public static XContentBuilder getMapping() {
@@ -92,6 +99,14 @@ public class EsTransport {
     }
 
     /**
+     * 创建单个文档
+     */
+    @Test
+    public void createDoc() {
+        EsUtils.transportClient().prepareIndex().setIndex("IndexName").setType("TypeName").setId("id").setSource("source").execute().actionGet();
+    }
+
+    /**
      * 删除索引
      */
     @Test
@@ -111,5 +126,42 @@ public class EsTransport {
     @Test
     public void deleteType() {
         EsUtils.transportClient().prepareDelete().setIndex("IndexName").setType("TypeName").execute().actionGet();
+    }
+
+    /**
+     * 删除doc文档
+     */
+    @Test
+    public void deleteDoc() {
+        EsUtils.transportClient().prepareDelete().setIndex("IndexName").setType("TypeName").setId("id").execute().actionGet();
+    }
+
+    /**
+     * 查询
+     */
+    @Test
+    public void select() {
+        Client client = EsUtils.transportClient();
+        // 组合查询条件
+        BoolQueryBuilder query = QueryBuilders.boolQuery();
+        query.must(QueryBuilders.termQuery("title", "德国喜宝有机营养米粉 （2830）"));
+        // 查询
+        SearchResponse response = client
+                // index
+                .prepareSearch("product")
+                // type
+                .setTypes("product_info")
+                // 查询条件
+                .setQuery(query)
+                .setFrom(0)
+                .setSize(60)
+                .execute()
+                .actionGet();
+        // 响应内容
+        SearchHits shs = response.getHits();
+        for (SearchHit hit : shs) {
+            System.out.println(hit.getSourceAsString());
+        }
+        client.close();
     }
 }
