@@ -13,6 +13,7 @@ import org.elasticsearch.client.Requests;
 import org.elasticsearch.common.xcontent.XContentBuilder;
 import org.elasticsearch.index.query.BoolQueryBuilder;
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.reindex.DeleteByQueryAction;
 import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.SearchHits;
 import org.junit.Test;
@@ -83,8 +84,7 @@ public class EsTransport {
      */
     @Test
     public void createMapping() {
-        XContentBuilder mapping1 = getMapping();
-        PutMappingRequest mapping = Requests.putMappingRequest("product").type("product_info").source(mapping1);
+        PutMappingRequest mapping = Requests.putMappingRequest("product").type("product_info").source(getMapping());
         EsUtils.transportClient().admin().indices().putMapping(mapping).actionGet();
     }
 
@@ -93,10 +93,7 @@ public class EsTransport {
      */
     @Test
     public void createIndex() {
-        EsUtils.transportClient().admin()
-                .indices()
-                .create(new CreateIndexRequest("products"))
-                .actionGet();
+        EsUtils.transportClient().admin().indices().create(new CreateIndexRequest("product")).actionGet();
     }
 
     /**
@@ -116,7 +113,7 @@ public class EsTransport {
     }
 
     /**
-     * 替换别名
+     * 使用别名替换索引
      */
     @Test
     public void replaceAlias(){
@@ -162,6 +159,17 @@ public class EsTransport {
     @Test
     public void deleteDoc() {
         EsUtils.transportClient().prepareDelete().setIndex("IndexName").setType("TypeName").setId("id").execute().actionGet();
+    }
+
+    /**
+     * 使用matchAllQuery删除所有文档
+     */
+    @Test
+    public void deleteAll(){
+		   DeleteByQueryAction.INSTANCE.newRequestBuilder(EsUtils.transportClient())
+	         .source("product")
+	         .filter(QueryBuilders.matchAllQuery())
+	         .get();
     }
 
     /**

@@ -140,28 +140,16 @@ public class EsUtils {
      * @param proDatas
      */
     public void esTransportBatchPush(List<JSONObject> proDatas) {
-        //一千条一次
-        if (proDatas != null && proDatas.size() > 0) {
-            int cnt = proDatas.size() / 1000;
-            int mod = proDatas.size() % 1000;
-            for (int i = 0; i <= cnt; i++) {
-                for (int j = 0; j < 1000 && i < cnt || i == cnt && j < mod; ++j) {
-                    JSONObject proData = proDatas.get(i * 1000 + j);
-                    try {
-                        byte[] json = objectMapper.writeValueAsBytes(proData);
-                        // 新版的API中使用setSource时，参数的个数必须是偶数,需加XContentType.JSON
-                        bulkProcessor.add(new IndexRequest("product", "product_info", proData.get("id").toString()).source(json, XContentType.JSON));
+        for(JSONObject proData :proDatas){
+            try {
+                byte[] json = objectMapper.writeValueAsBytes(proData);
+                // 新版的API中使用setSource时，参数的个数必须是偶数,需加XContentType.JSON
+                bulkProcessor.add(new IndexRequest("product", "product_info", proData.get("id").toString()).source(json, XContentType.JSON));
 
-                    } catch (JsonProcessingException e) {
-                        e.printStackTrace();
-                    }
-                    
-                    // 数量不够1000.需要flush
-                    if (i == cnt) {
-                        bulkProcessor.flush();
-                    }
-                }
+            } catch (JsonProcessingException e) {
+                e.printStackTrace();
             }
         }
+        bulkProcessor.close();
     }
 }
