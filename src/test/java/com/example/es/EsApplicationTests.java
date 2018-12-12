@@ -21,12 +21,21 @@ public class EsApplicationTests {
     private EsUtils esUtils;
 
     /**
-     * 测试批次导入
+     * 测试rest批次导入
      */
     @Test
-    public void contextLoads() {
+    public void restTest() {
         List<JSONObject> jsonObjects = productMapper.selectAll();
         esUtils.esRestBatchPush(jsonObjects,false);
+    }
+
+    /**
+     * 测试transport批次导入
+     */
+    @Test
+    public void transportTest() {
+        List<JSONObject> jsonObjects = productMapper.selectAll();
+        esUtils.esTransportBatchPush(jsonObjects);
     }
 
 }

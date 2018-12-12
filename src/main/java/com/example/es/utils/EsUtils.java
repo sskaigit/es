@@ -1,6 +1,7 @@
 package com.example.es.utils;
 
 import com.alibaba.fastjson.JSONObject;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.HttpHost;
 import org.apache.http.entity.ContentType;
@@ -13,6 +14,7 @@ import org.elasticsearch.client.Response;
 import org.elasticsearch.client.RestClient;
 import org.elasticsearch.common.settings.Settings;
 import org.elasticsearch.common.transport.TransportAddress;
+import org.elasticsearch.common.xcontent.XContentType;
 import org.elasticsearch.transport.client.PreBuiltTransportClient;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -138,13 +140,27 @@ public class EsUtils {
      * @param proDatas
      */
     public void esTransportBatchPush(List<JSONObject> proDatas) {
-        for (JSONObject jsonObject :proDatas){
-            try {
-                byte[] json = objectMapper.writeValueAsBytes(jsonObject);
+        //一千条一次
+        if (proDatas != null && proDatas.size() > 0) {
+            int cnt = proDatas.size() / 1000;
+            int mod = proDatas.size() % 1000;
+            for (int i = 0; i <= cnt; i++) {
+                for (int j = 0; j < 1000 && i < cnt || i == cnt && j < mod; ++j) {
+                    JSONObject proData = proDatas.get(i * 1000 + j);
+                    try {
+                        byte[] json = objectMapper.writeValueAsBytes(proData);
+                        // 新版的API中使用setSource时，参数的个数必须是偶数,需加XContentType.JSON
+                        bulkProcessor.add(new IndexRequest("product", "product_info", proData.get("id").toString()).source(json, XContentType.JSON));
 
-                bulkProcessor.add(new IndexRequest("product", jsonObject.getString("product_info"), jsonObject.getString("id")).source(json));
-            } catch (Exception e) {
-                e.printStackTrace();
+                    } catch (JsonProcessingException e) {
+                        e.printStackTrace();
+                    }
+                    
+                    // 数量不够1000.需要flush
+                    if (i == cnt) {
+                        bulkProcessor.flush();
+                    }
+                }
             }
         }
     }

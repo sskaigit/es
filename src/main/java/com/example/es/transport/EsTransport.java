@@ -1,6 +1,7 @@
 package com.example.es.transport;
 
 import com.example.es.utils.EsUtils;
+import org.elasticsearch.action.admin.indices.alias.IndicesAliasesRequest;
 import org.elasticsearch.action.admin.indices.create.CreateIndexRequest;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
 import org.elasticsearch.action.admin.indices.exists.indices.IndicesExistsRequest;
@@ -83,7 +84,7 @@ public class EsTransport {
     @Test
     public void createMapping() {
         XContentBuilder mapping1 = getMapping();
-        PutMappingRequest mapping = Requests.putMappingRequest("products").type("product_two").source(mapping1);
+        PutMappingRequest mapping = Requests.putMappingRequest("product").type("product_info").source(mapping1);
         EsUtils.transportClient().admin().indices().putMapping(mapping).actionGet();
     }
 
@@ -96,6 +97,33 @@ public class EsTransport {
                 .indices()
                 .create(new CreateIndexRequest("products"))
                 .actionGet();
+    }
+
+    /**
+     * 添加别名
+     */
+    @Test
+    public void createAlias(){
+        EsUtils.transportClient().admin().indices().prepareAliases().addAlias("product","my_index").execute().actionGet();
+    }
+
+    /**
+     * 删除别名
+     */
+    @Test
+    public void deleteAlias(){
+        EsUtils.transportClient().admin().indices().prepareAliases().removeAlias("my_index_v1","my_index").execute().actionGet();
+    }
+
+    /**
+     * 替换别名
+     */
+    @Test
+    public void replaceAlias(){
+        EsUtils.transportClient().admin().indices().prepareAliases()
+                .removeAlias("my_index_v1","my_index")
+                .addAlias("product","my_index")
+                .execute().actionGet();
     }
 
     /**
@@ -112,10 +140,10 @@ public class EsTransport {
     @Test
     public void deleteIndex() {
         IndicesExistsResponse indicesExistsResponse = EsUtils.transportClient().admin().indices()
-                .exists(new IndicesExistsRequest(new String[]{"products"}))
+                .exists(new IndicesExistsRequest(new String[]{"product"}))
                 .actionGet();
         if (indicesExistsResponse.isExists()) {
-            EsUtils.transportClient().admin().indices().delete(new DeleteIndexRequest("products"))
+            EsUtils.transportClient().admin().indices().delete(new DeleteIndexRequest("product"))
                     .actionGet();
         }
     }

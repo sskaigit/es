@@ -36,19 +36,22 @@ public class EsBulkProcessor {
         return BulkProcessor.builder(client, new BulkProcessor.Listener() {
             @Override
             public void beforeBulk(long l, BulkRequest bulkRequest) {
-
+                System.out.println("请求信息--->"+bulkRequest.requests());
+                System.out.println("请求数量--->"+bulkRequest.numberOfActions());
             }
 
             @Override
             public void afterBulk(long l, BulkRequest bulkRequest, BulkResponse bulkResponse) {
-
+                System.out.println("---尝试操作" + bulkRequest.numberOfActions() + "条数据成功---");
+                System.out.println("响应结果--->"+bulkResponse.buildFailureMessage());
             }
 
             @Override
             public void afterBulk(long l, BulkRequest bulkRequest, Throwable throwable) {
+                System.out.println("---尝试操作" + bulkRequest.numberOfActions() + "条数据失败---");
                 logger.error("{} data bulk failed,reason :{}", bulkRequest.numberOfActions(), throwable);
             }
-            //每添加1000个request，执行一次bulk操作
+            //每添加1000个request，执行一次bulk操作  ** 没到数量就不会请求
         }).setBulkActions(1000)
                 //每达到5M的请求size时，执行一次bulk操作
                 .setBulkSize(new ByteSizeValue(5, ByteSizeUnit.MB))
