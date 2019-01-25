@@ -1,6 +1,6 @@
 package com.example.es.rest;
 
-import com.example.es.utils.EsUtils;
+import com.example.es.utils.EsRestUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 public class SyncEsTask implements Runnable {
 
     @Autowired
-    private EsUtils esUtils;
+    private EsRestUtils esUtils;
 
     @Override
     public void run() {

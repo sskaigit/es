@@ -19,19 +19,22 @@ import org.springframework.context.annotation.Configuration;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
-@Configuration
 public class EsBulkProcessor {
 
 
     public static final Logger logger = LoggerFactory.getLogger(EsBulkProcessor.class);
 
-    @Bean
-    public BulkProcessor bulkProcessor() throws UnknownHostException {
+    public static BulkProcessor bulkProcessor() {
 
         Settings settings = Settings.builder().put("cluster.name", "docker-cluster").build();
 
-        Client client = new PreBuiltTransportClient(settings)
-                .addTransportAddress(new TransportAddress(InetAddress.getByName("localhost"), Integer.parseInt("9300")));
+        Client client = null;
+        try {
+            client = new PreBuiltTransportClient(settings)
+                    .addTransportAddress(new TransportAddress(InetAddress.getByName("localhost"), Integer.parseInt("9300")));
+        } catch (UnknownHostException e) {
+            e.printStackTrace();
+        }
 
         return BulkProcessor.builder(client, new BulkProcessor.Listener() {
             @Override
