@@ -1,7 +1,7 @@
 package com.example.es.utils;
 
+import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONObject;
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.base.Preconditions;
 import lombok.extern.slf4j.Slf4j;
@@ -10,8 +10,10 @@ import org.elasticsearch.action.bulk.BulkProcessor;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
+import org.elasticsearch.action.get.GetResponse;
 import org.elasticsearch.action.index.IndexRequest;
 import org.elasticsearch.action.search.SearchResponse;
+import org.elasticsearch.action.support.WriteRequest;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.transport.TransportClient;
 import org.elasticsearch.common.Strings;
@@ -30,11 +32,12 @@ import org.elasticsearch.search.SearchHits;
 import org.elasticsearch.search.sort.SortOrder;
 import org.elasticsearch.transport.client.PreBuiltTransportClient;
 
-import java.io.IOException;
+import java.lang.reflect.Field;
 import java.net.InetAddress;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
+
+import static org.elasticsearch.index.query.QueryBuilders.termQuery;
 
 @Slf4j
 public class EsTransportUtil {
@@ -133,7 +136,7 @@ public class EsTransportUtil {
         Preconditions.checkArgument(!Strings.isNullOrEmpty(index) || !Strings.isNullOrEmpty(type) || !Strings.isNullOrEmpty(id), "index or type or id不能为空!");
         Preconditions.checkArgument(t != null, "新增数据不能为空!");
         try {
-            String json = objectMapper.writeValueAsString(t);
+            String json = JSON.toJSONString(t);
             EsTransportUtil.client().prepareIndex().setIndex(index).setType(type).setId(id).setSource(json, XContentType.JSON).execute().actionGet();
             log.info("创建单个文档成功!");
         } catch (Exception e) {
@@ -153,19 +156,16 @@ public class EsTransportUtil {
         Preconditions.checkArgument(!Strings.isNullOrEmpty(index) || !Strings.isNullOrEmpty(type), "index or type不能为空!");
         Preconditions.checkArgument(!list.isEmpty() || list != null, "json新增数据不能为空!");
         for (T t : list) {
-            try {
-                JSONObject jsonObject = JSONObject.parseObject(objectMapper.writeValueAsString(t));
-                String id = jsonObject.get("id").toString();
-                Preconditions.checkArgument(!Strings.isNullOrEmpty(id), "json新增数据必须含有ID!");
-                byte[] json = objectMapper.writeValueAsBytes(t);
-                // 新版的API中使用setSource时，参数的个数必须是偶数,需加XContentType.JSON
-                EsTransportUtil.bulkProcessor().add(new IndexRequest(index, type, id).source(json, XContentType.JSON));
-                log.info("批次导入数据成功!");
-            } catch (JsonProcessingException e) {
-                e.printStackTrace();
-                log.error("批次导入数据失败! - e={}", e.getMessage());
-            }
+            JSONObject jsonObject = JSONObject.parseObject(JSON.toJSONString(t));
+            log.info("批次导入数据 - jsonObject={}", jsonObject);
+            String id = jsonObject.get("id").toString();
+            byte[] json = jsonObject.toJSONString().getBytes();
+
+            // 新版的API中使用setSource时，参数的个数必须是偶数,需加XContentType.JSON
+            EsTransportUtil.bulkProcessor().add(new IndexRequest(index, type, id).source(json, XContentType.JSON));
+            log.info("批次导入数据成功!");
         }
+        bulkProcessor.flush();
     }
 
     /**
@@ -246,8 +246,13 @@ public class EsTransportUtil {
         Preconditions.checkArgument(!Strings.isNullOrEmpty(index) || !Strings.isNullOrEmpty(type) || !Strings.isNullOrEmpty(id), "index or type or id不能为空!");
         Preconditions.checkArgument(t != null, "更新数据不能为空!");
         try {
-            byte[] json = objectMapper.writeValueAsBytes(t);
-            EsTransportUtil.client().prepareUpdate(index, type, id).setDoc(json, XContentType.JSON).get();
+            JSONObject jsonObject = JSONObject.parseObject(objectMapper.writeValueAsString(t));
+            byte[] json = jsonObject.toJSONString().getBytes();
+            log.info("更新一条数据 - json={}", new String(json));
+            UpdateRequest request = new UpdateRequest(index, type, id).doc(json, XContentType.JSON);
+            //写入完成立即刷新
+            request.setRefreshPolicy(WriteRequest.RefreshPolicy.IMMEDIATE);
+            EsTransportUtil.client().update(request).get();
             log.info("更新数据成功!");
         } catch (Exception e) {
             e.printStackTrace();
@@ -271,14 +276,16 @@ public class EsTransportUtil {
                 String id = jsonObject.get("id").toString();
                 Preconditions.checkArgument(!Strings.isNullOrEmpty(id), "json更新数据必须含有ID!");
 
-                byte[] json = objectMapper.writeValueAsBytes(t);
+                byte[] json = jsonObject.toJSONString().getBytes();
+                log.info("批量更新数据 - json={}", new String(json));
                 EsTransportUtil.bulkProcessor().add(new UpdateRequest(index, type, id).doc(json, XContentType.JSON));
-                log.error("批量更新数据成功!");
+                log.info("批量更新数据成功!");
             } catch (Exception e) {
                 e.printStackTrace();
                 log.error("批量更新数据失败! - e={}", e.getMessage());
             }
         }
+        bulkProcessor.flush();
     }
 
     /**
@@ -288,8 +295,11 @@ public class EsTransportUtil {
      * @param type
      * @param pageNum
      * @param pageSize
+     * @param t
+     * @param <T>
+     * @return
      */
-    public static <T> List<T> findByPage(String index, String type, Integer pageNum, Integer pageSize, Class<T> valueType) {
+    public static <T> List<T> findByPage(String index, String type, Integer pageNum, Integer pageSize, T t) {
         Preconditions.checkArgument(!Strings.isNullOrEmpty(index) || !Strings.isNullOrEmpty(type), "index or type不能为空!");
         Preconditions.checkArgument(pageNum != null || pageSize != null, "pageNum or pageSize不能为空!");
 
@@ -303,7 +313,7 @@ public class EsTransportUtil {
                 .setSize(pageSize)
                 .get();
 
-        return getResponse(response, valueType);
+        return getResponse(response, t);
     }
 
     /**
@@ -311,21 +321,40 @@ public class EsTransportUtil {
      *
      * @param index
      * @param type
-     * @param json
      * @param pageNum
      * @param pageSize
+     * @param t
+     * @param <T>
      * @return
      */
-    public static <T> List<T> findByTerm(String index, String type, JSONObject json, Integer pageNum, Integer pageSize, Class<T> valueType) {
+    public static <T> List<T> findByTerm(String index, String type, Integer pageNum, Integer pageSize, T t) {
         Preconditions.checkArgument(!Strings.isNullOrEmpty(index) || !Strings.isNullOrEmpty(type), "index or type不能为空!");
         Preconditions.checkArgument(pageNum != null || pageSize != null, "pageNum or pageSize不能为空!");
-        Preconditions.checkArgument(!json.isEmpty(), "查询条件不能为空!");
+
         // 组合查询条件
         BoolQueryBuilder query = QueryBuilders.boolQuery();
-        Iterator<String> iterator = json.keySet().iterator();
-        while (iterator.hasNext()) {
-            String key = iterator.next();
-            query.must(QueryBuilders.termQuery(key, json.get(key)));
+        Field[] fields = t.getClass().getDeclaredFields();
+        for (Field field : fields) {
+            field.setAccessible(true);
+            String name = field.getName();
+            try {
+                if (name.equals("pageNum") || name.equals("pageSize")) {
+                    continue;
+                } else {
+                    Object o = field.get(t);
+                    if (o != null && o != "") {
+                        log.info("条件查询并分页 - term={}", o + "-->" + name);
+                        query.must(termQuery(name, o));
+                    }
+                }
+            } catch (IllegalAccessException e) {
+                e.printStackTrace();
+            }
+        }
+
+        //列表分页查询
+        if (query == null) {
+            return findByPage(index, type, pageNum, pageSize, t);
         }
 
         // 查询
@@ -341,7 +370,36 @@ public class EsTransportUtil {
                 .execute()
                 .actionGet();
 
-        return getResponse(response, valueType);
+        return getResponse(response, t);
+    }
+
+    /**
+     * WD单框多查询
+     *
+     * @param index
+     * @param type
+     * @param value
+     * @param keys
+     * @param t
+     * @param <T>
+     * @return
+     */
+    public static <T> List<T> findbyWD(String index, String type, String value, List<String> keys, T t) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(index) || !Strings.isNullOrEmpty(type) || !Strings.isNullOrEmpty(value), "index or type or value不能为空!");
+        Preconditions.checkArgument(!keys.isEmpty() || keys != null, "keys不能为空!");
+        // 组合查询条件
+        BoolQueryBuilder query = QueryBuilders.boolQuery();
+        for (String key : keys) {
+            query.should(QueryBuilders.matchQuery(key, value));
+        }
+        // 查询
+        SearchResponse response = EsTransportUtil.client()
+                .prepareSearch(index)
+                .setTypes(type)
+                .setQuery(query)
+                .get();
+
+        return getResponse(response, t);
     }
 
     /**
@@ -350,9 +408,11 @@ public class EsTransportUtil {
      * @param index
      * @param type
      * @param ids
+     * @param t
+     * @param <T>
      * @return
      */
-    public static <T> List<T> findbyIds(String index, String type, String ids, Class<T> valueType) {
+    public static <T> List<T> findbyIds(String index, String type, String ids, T t) {
         Preconditions.checkArgument(!Strings.isNullOrEmpty(index) || !Strings.isNullOrEmpty(type) || !Strings.isNullOrEmpty(ids), "index or type不能为空!");
         QueryBuilder queryBuilder = QueryBuilders.idsQuery()
                 .addIds(ids);
@@ -362,32 +422,47 @@ public class EsTransportUtil {
                 .setQuery(queryBuilder)
                 .get();
 
-        return getResponse(response, valueType);
+        return getResponse(response, t);
+    }
+
+    /**
+     * id查询
+     *
+     * @param index
+     * @param type
+     * @param id
+     * @param t
+     * @param <T>
+     * @return
+     */
+    public static <T> T findbyId(String index, String type, String id, T t) {
+        Preconditions.checkArgument(!Strings.isNullOrEmpty(index) || !Strings.isNullOrEmpty(type) || !Strings.isNullOrEmpty(id), "index or type不能为空!");
+
+        GetResponse response = client.prepareGet(index, type, id).get();
+        T p = (T) JSONObject.toJavaObject(JSONObject.parseObject(response.getSourceAsString()), t.getClass());
+        log.info("获取响应结果 - " + p + "={}", p);
+        return p;
     }
 
     /**
      * 获取响应结果
      *
      * @param response
+     * @param t
+     * @param <T>
      * @return
      */
-    private static <T> List<T> getResponse(SearchResponse response, Class<T> valueType) {
-        Preconditions.checkArgument(valueType != null, "对象不能为空!");
+    private static <T> List<T> getResponse(SearchResponse response, T t) {
+        Preconditions.checkArgument(t != null, "对象不能为空!");
         // 响应内容
-        List<JSONObject> jsons = new ArrayList<>();
         List<T> list = new ArrayList<>();
         SearchHits searchHits = response.getHits();
         log.info("一共的记录数: TotalHits={}", searchHits.getTotalHits());
 
         for (SearchHit searchHit : searchHits) {
-            try {
-                T t = objectMapper.readValue(searchHit.getSourceAsString(), valueType);
-                list.add(t);
-                log.info("获取响应结果 - " + valueType + "={}", t);
-            } catch (IOException e) {
-                e.printStackTrace();
-                log.error("获取响应结果失败 - e={}", e.getMessage());
-            }
+            T p = (T) JSONObject.toJavaObject(JSONObject.parseObject(searchHit.getSourceAsString()), t.getClass());
+            list.add(p);
+            log.info("获取响应结果 - " + p + "={}", p);
         }
         return list;
     }
